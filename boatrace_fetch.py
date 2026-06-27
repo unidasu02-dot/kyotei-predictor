@@ -11,7 +11,6 @@ WORKSHEET_NAME = "今日の直前データ"
 print("=== 開始 ===", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 creds_dict = json.loads(os.getenv('GOOGLE_CREDENTIALS'))
-print("✅ 認証OK")
 
 def get_gspread_client():
     from google.oauth2.service_account import Credentials
@@ -25,17 +24,40 @@ def fetch_data():
     p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
     pr = requests.get("https://boatraceopenapi.github.io/programs/v3/today.json", timeout=10).json()
     
-    preview_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p)
-    program_df = pd.json_normalize(pr.get('programs', pr) if isinstance(pr, dict) else pr)
+    preview_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, 
+                                   sep='_')
+    program_df = pd.json_normalize(pr.get('programs', pr) if isinstance(pr, dict) else pr, 
+                                   sep='_')
     
     df = pd.merge(program_df, preview_df, on=['stadium_number', 'number'], how='left')
     
-    # ★ 必要な列だけ抽出（あなたの欲しい情報中心）
-    cols = ['stadium_name', 'number', 'title', 'boats.racer_boat_number', 'boats.racer_name', 
-            'boats.racer_exhibition_time', 'boats.racer_lap_time', 'boats.racer_turn_time', 
-            'boats.racer_straight_time', 'boats.racer_start_timing']
-    available_cols = [c for c in cols if c in df.columns]
-    df = df[available_cols]
+    # ★ あなたの欲しい列を優先抽出
+    key_cols = [
+        'stadium_number', 'stadium_name', 'number', 'title',
+        # 1号艇〜6号艇のタイム情報
+        'boats_1_racer_exhibition_time', 'boats_2_racer_exhibition_time', 
+        'boats_3_racer_exhibition_time', 'boats_4_racer_exhibition_time',
+        'boats_5_racer_exhibition_time', 'boats_6_racer_exhibition_time',
+        
+        'boats_1_racer_straight_time', 'boats_2_racer_straight_time', 
+        'boats_3_racer_straight_time', 'boats_4_racer_straight_time',
+        'boats_5_racer_straight_time', 'boats_6_racer_straight_time',
+        
+        'boats_1_racer_turn_time', 'boats_2_racer_turn_time', 
+        'boats_3_racer_turn_time', 'boats_4_racer_turn_time',
+        'boats_5_racer_turn_time', 'boats_6_racer_turn_time',
+        
+        'boats_1_racer_lap_time', 'boats_2_racer_lap_time', 
+        'boats_3_racer_lap_time', 'boats_4_racer_lap_time',
+        'boats_5_racer_lap_time', 'boats_6_racer_lap_time',
+        
+        'boats_1_racer_start_timing', 'boats_2_racer_start_timing', 
+        'boats_3_racer_start_timing', 'boats_4_racer_start_timing',
+        'boats_5_racer_start_timing', 'boats_6_racer_start_timing',
+    ]
+    
+    available = [c for c in key_cols if c in df.columns]
+    df = df[available]
     
     print(f"✅ 抽出完了 {len(df)}レース")
     return df
@@ -46,7 +68,7 @@ def update_sheet(df):
     try:
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
     except:
-        sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 50)
+        sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 100)
     
     df = df.fillna('')
     df = df.replace([np.inf, -np.inf], '')
