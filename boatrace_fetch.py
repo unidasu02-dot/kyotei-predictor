@@ -21,25 +21,19 @@ def get_gspread_client():
 
 def fetch_data():
     print("📡 データ取得...")
-    p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
-    pr = requests.get("https://boatraceopenapi.github.io/programs/v3/today.json", timeout=10).json()
-    
-    preview_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
-    program_df = pd.json_normalize(pr.get('programs', pr) if isinstance(pr, dict) else pr, sep='_')
-    
-    df = pd.merge(program_df, preview_df, on=['stadium_number', 'number'], how='left')
-    
-    # 安全に列選択
-    base_cols = ['stadium_number', 'number', 'title']
-    time_keywords = ['exhibition', 'straight', 'turn', 'lap', 'start_timing']
-    time_cols = [c for c in df.columns if any(k in c.lower() for k in time_keywords)]
-    
-    selected = [c for c in base_cols if c in df.columns] + time_cols
-    df = df[selected]
-    
-    print("✅ 抽出列:", list(df.columns))
-    print(f"✅ {len(df)}レース")
-    return df
+    # BoatraceCSV（より詳細なタイム情報あり）
+    date_str = datetime.now().strftime("%Y/%m/%d")
+    preview_url = f"https://boatracecsv.github.io/data/previews/original_exhibition/{date_str}.csv"
+    try:
+        df = pd.read_csv(preview_url)
+        print("✅ BoatraceCSV取得成功")
+        print("列:", list(df.columns))
+        return df
+    except:
+        print("CSV取得失敗。OpenAPIにフォールバック")
+        p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
+        df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
+        return df
 
 def update_sheet(df):
     client = get_gspread_client()
