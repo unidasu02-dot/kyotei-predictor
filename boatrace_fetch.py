@@ -1,66 +1,60 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
-import gspread
-from google.oauth2.service_account import Credentials
+import json
 import os
+from datetime import datetime
 
-# === 設定 ===
-SHEET_NAME = "ボートレース予想"  # あなたのシート名
-WORKSHEET_NAME = "今日の直前データ"  # 出力先タブ
+print("=== スクリプト開始 ===", datetime.now())
 
-# Google Sheets認証（サービスアカウントJSONをリポジトリsecretsに設定推奨）
-def get_gspread_client():
-    creds_dict = {
-        "type": "service_account",
-        # ... (GitHub Secretsから読み込み推奨。詳細後述)
-    }
-    creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-    return gspread.authorize(creds)
+# 環境変数確認
+creds = os.getenv('GOOGLE_CREDENTIALS')
+print("GOOGLE_CREDENTIALS 存在確認:", "Yes" if creds else "No")
 
-# データ取得（Previews + Programsを組み合わせ）
-def fetch_today_data():
-    # Previews（直前情報：展示・一周・まわり足・直線・STなど）
+try:
+    # データ取得
     preview_url = "https://boatraceopenapi.github.io/previews/v3/today.json"
-    # Programs（出走表・基本情報）
     program_url = "https://boatraceopenapi.github.io/programs/v3/today.json"
     
-    try:
-        previews = requests.get(preview_url).json()
-        programs = requests.get(program_url).json()
-    except:
-        print("データ取得失敗（非開催日？）")
-        return pd.DataFrame()
+    print("Previews URL取得中...")
+    preview_resp = requests.get(preview_url)
+    print("Previews ステータス:", preview_resp.status_code)
     
-    # pandasで処理（実際のJSON構造に合わせて調整）
-    preview_df = pd.json_normalize(previews.get('previews', [])) if isinstance(previews, dict) else pd.DataFrame(previews)
-    program_df = pd.json_normalize(programs.get('programs', [])) if isinstance(programs, dict) else pd.DataFrame(programs)
+    print("Programs URL取得中...")
+    program_resp = requests.get(program_url)
+    print("Programs ステータス:", program_resp.status_code)
     
-    # 結合例（raceキーなどでマージ）
-    df = pd.merge(program_df, preview_df, on=['stadium_number', 'number'], how='left')
+    previews = preview_resp.json()
+    programs = program_resp.json()
     
-    # 欲しいカラム例（実際のキー名はJSON確認後調整）
-    key_columns = [
-        'stadium_name', 'number', 'race_title',
-        # 枠番別
-        'boat_1_exhibition_time', 'boat_1_straight_time', 'boat_1_lap_time', 'boat_1_turn_time',  # まわり足など
-        'boat_1_start_timing', 'boat_1_win_rate',  # 枠番別勝率・ST
-        # 同様にboat_2 ~ boat_6
-        # ... あなたのフィルタ追加ここ
-    ]
-    return df[key_columns] if all(col in df.columns for col in key_columns) else df
+    print("Previews キー:", list(previews.keys()) if isinstance(previews, dict) else "list型")
+    print("Programs キー:", list(programs.keys()) if isinstance(programs, dict) else "list型")
+    
+    # pandas変換（安全に）
+    if isinstance(previews, list):
+        preview_df = pd.DataFrame(previews)
+    else:
+        preview_df = pd.json_normalize(previews.get('previews', previews))
+    
+    if isinstance(programs, list):
+        program_df = pd.DataFrame(programs)
+    else:
+        program_df = pd.json_normalize(programs.get('programs', programs))
+    
+    print("取得データ数 - Previews:", len(preview_df), "Programs:", len(program_df))
+    
+    if preview_df.empty and program_df.empty:
+        print("データなし（非開催日？）")
+    else:
+        print("サンプル列:", list(preview_df.columns)[:10] if not preview_df.empty else "空")
+        
+        # 結合（実際のキー名に合わせて調整）
+        df = pd.merge(program_df, preview_df, left_on=['stadium_number', 'number'], 
+                      right_on=['stadium_number', 'number'], how='left', suffixes=('', '_preview'))
+        
+        print("結合後行数:", len(df))
+        print(df.head(3).to_string())  # デバッグ表示
 
-# Sheets書き込み
-def update_sheet(df):
-    client = get_gspread_client()
-    sheet = client.open(SHEET_NAME).worksheet(WORKSHEET_NAME)
-    sheet.clear()
-    sheet.update([df.columns.values.tolist()] + df.values.tolist())
-    print(f"更新完了: {len(df)}レース")
+except Exception as e:
+    print("エラー発生:", type(e).__name__, str(e))
 
-if __name__ == "__main__":
-    df = fetch_today_data()
-    if not df.empty:
-        # ここにあなたのフィルタ（3号艇条件など）を追加
-        # df = df[df['some_condition'] == True]
-        update_sheet(df)
+print("=== スクリプト終了 ===")
