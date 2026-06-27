@@ -24,19 +24,20 @@ def fetch_data():
     p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
     pr = requests.get("https://boatraceopenapi.github.io/programs/v3/today.json", timeout=10).json()
     
-    # ネストを広範囲にフラット化
     preview_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
     program_df = pd.json_normalize(pr.get('programs', pr) if isinstance(pr, dict) else pr, sep='_')
     
     df = pd.merge(program_df, preview_df, on=['stadium_number', 'number'], how='left')
     
-    # ★ 欲しい情報を幅広く検索・抽出
-    important_keywords = ['exhibition', 'straight', 'turn', 'lap', 'start_timing', 'stadium', 'number', 'title']
-    selected_cols = [col for col in df.columns if any(k in col.lower() for k in important_keywords)]
+    # 安全に列選択
+    base_cols = ['stadium_number', 'number', 'title']
+    time_keywords = ['exhibition', 'straight', 'turn', 'lap', 'start_timing']
+    time_cols = [c for c in df.columns if any(k in c.lower() for k in time_keywords)]
     
-    df = df[['stadium_number', 'stadium_name', 'number', 'title'] + [c for c in selected_cols if c not in ['stadium_number', 'number', 'title']]]
+    selected = [c for c in base_cols if c in df.columns] + time_cols
+    df = df[selected]
     
-    print("抽出された主な列:", list(df.columns))
+    print("✅ 抽出列:", list(df.columns))
     print(f"✅ {len(df)}レース")
     return df
 
