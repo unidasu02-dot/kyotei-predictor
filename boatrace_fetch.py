@@ -5,16 +5,13 @@ import os
 import numpy as np
 from datetime import datetime
 
-# ================== 設定 ==================
 SHEET_NAME = "ボートレース予想"
 WORKSHEET_NAME = "今日の直前データ"
-# =========================================
 
 print("=== 開始 ===", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-creds_json = os.getenv('GOOGLE_CREDENTIALS')
-creds_dict = json.loads(creds_json)
-print("✅ 認証成功 -", creds_dict.get('client_email'))
+creds_dict = json.loads(os.getenv('GOOGLE_CREDENTIALS'))
+print("✅ 認証OK")
 
 def get_gspread_client():
     from google.oauth2.service_account import Credentials
@@ -24,21 +21,26 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 def fetch_data():
-    print("📡 データ取得中...")
-    previews = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
-    programs = requests.get("https://boatraceopenapi.github.io/programs/v3/today.json", timeout=10).json()
+    print("📡 データ取得...")
+    p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
+    pr = requests.get("https://boatraceopenapi.github.io/programs/v3/today.json", timeout=10).json()
     
-    preview_df = pd.json_normalize(previews.get('previews', previews) if isinstance(previews, dict) else previews)
-    program_df = pd.json_normalize(programs.get('programs', programs) if isinstance(programs, dict) else programs)
+    preview_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p)
+    program_df = pd.json_normalize(pr.get('programs', pr) if isinstance(pr, dict) else pr)
     
     df = pd.merge(program_df, preview_df, on=['stadium_number', 'number'], how='left')
-    print(f"✅ 取得 {len(df)}レース")
+    
+    # ★ 必要な列だけ抽出（あなたの欲しい情報中心）
+    cols = ['stadium_name', 'number', 'title', 'boats.racer_boat_number', 'boats.racer_name', 
+            'boats.racer_exhibition_time', 'boats.racer_lap_time', 'boats.racer_turn_time', 
+            'boats.racer_straight_time', 'boats.racer_start_timing']
+    available_cols = [c for c in cols if c in df.columns]
+    df = df[available_cols]
+    
+    print(f"✅ 抽出完了 {len(df)}レース")
     return df
 
 def update_sheet(df):
-    if df.empty:
-        print("データ空")
-        return
     client = get_gspread_client()
     spreadsheet = client.open(SHEET_NAME)
     try:
@@ -46,7 +48,6 @@ def update_sheet(df):
     except:
         sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 50)
     
-    # ★ NaN/inf対策（これでエラー回避）
     df = df.fillna('')
     df = df.replace([np.inf, -np.inf], '')
     
