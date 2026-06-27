@@ -21,19 +21,36 @@ def get_gspread_client():
 
 def fetch_data():
     print("📡 データ取得...")
-    # BoatraceCSV（より詳細なタイム情報あり）
-    date_str = datetime.now().strftime("%Y/%m/%d")
-    preview_url = f"https://boatracecsv.github.io/data/previews/original_exhibition/{date_str}.csv"
+    today = datetime.now().strftime("%Y/%m/%d")
+    
+    # 1. BoatraceCSV（まわり足・一周・直線）
+    csv_url = f"https://boatracecsv.github.io/data/previews/original_exhibition/{today}.csv"
     try:
-        df = pd.read_csv(preview_url)
-        print("✅ BoatraceCSV取得成功")
-        print("列:", list(df.columns))
-        return df
+        csv_df = pd.read_csv(csv_url)
+        print("✅ CSV取得成功")
     except:
-        print("CSV取得失敗。OpenAPIにフォールバック")
+        print("CSV取得失敗")
+        csv_df = pd.DataFrame()
+    
+    # 2. OpenAPI（展示・ST）
+    try:
         p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
-        df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
-        return df
+        api_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
+        print("✅ OpenAPI取得成功")
+    except:
+        api_df = pd.DataFrame()
+    
+    # 統合
+    if not csv_df.empty and not api_df.empty:
+        df = pd.merge(csv_df, api_df, on=['stadium_number', 'number'], how='left')
+    elif not csv_df.empty:
+        df = csv_df
+    else:
+        df = api_df
+    
+    print("抽出列:", list(df.columns))
+    print(f"✅ 統合 {len(df)}レース")
+    return df
 
 def update_sheet(df):
     client = get_gspread_client()
@@ -41,7 +58,7 @@ def update_sheet(df):
     try:
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
     except:
-        sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 200)
+        sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 300)
     
     df = df.fillna('')
     df = df.replace([np.inf, -np.inf], '')
