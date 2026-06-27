@@ -24,42 +24,20 @@ def fetch_data():
     p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
     pr = requests.get("https://boatraceopenapi.github.io/programs/v3/today.json", timeout=10).json()
     
-    preview_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, 
-                                   sep='_')
-    program_df = pd.json_normalize(pr.get('programs', pr) if isinstance(pr, dict) else pr, 
-                                   sep='_')
+    # ネストを広範囲にフラット化
+    preview_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
+    program_df = pd.json_normalize(pr.get('programs', pr) if isinstance(pr, dict) else pr, sep='_')
     
     df = pd.merge(program_df, preview_df, on=['stadium_number', 'number'], how='left')
     
-    # ★ あなたの欲しい列を優先抽出
-    key_cols = [
-        'stadium_number', 'stadium_name', 'number', 'title',
-        # 1号艇〜6号艇のタイム情報
-        'boats_1_racer_exhibition_time', 'boats_2_racer_exhibition_time', 
-        'boats_3_racer_exhibition_time', 'boats_4_racer_exhibition_time',
-        'boats_5_racer_exhibition_time', 'boats_6_racer_exhibition_time',
-        
-        'boats_1_racer_straight_time', 'boats_2_racer_straight_time', 
-        'boats_3_racer_straight_time', 'boats_4_racer_straight_time',
-        'boats_5_racer_straight_time', 'boats_6_racer_straight_time',
-        
-        'boats_1_racer_turn_time', 'boats_2_racer_turn_time', 
-        'boats_3_racer_turn_time', 'boats_4_racer_turn_time',
-        'boats_5_racer_turn_time', 'boats_6_racer_turn_time',
-        
-        'boats_1_racer_lap_time', 'boats_2_racer_lap_time', 
-        'boats_3_racer_lap_time', 'boats_4_racer_lap_time',
-        'boats_5_racer_lap_time', 'boats_6_racer_lap_time',
-        
-        'boats_1_racer_start_timing', 'boats_2_racer_start_timing', 
-        'boats_3_racer_start_timing', 'boats_4_racer_start_timing',
-        'boats_5_racer_start_timing', 'boats_6_racer_start_timing',
-    ]
+    # ★ 欲しい情報を幅広く検索・抽出
+    important_keywords = ['exhibition', 'straight', 'turn', 'lap', 'start_timing', 'stadium', 'number', 'title']
+    selected_cols = [col for col in df.columns if any(k in col.lower() for k in important_keywords)]
     
-    available = [c for c in key_cols if c in df.columns]
-    df = df[available]
+    df = df[['stadium_number', 'stadium_name', 'number', 'title'] + [c for c in selected_cols if c not in ['stadium_number', 'number', 'title']]]
     
-    print(f"✅ 抽出完了 {len(df)}レース")
+    print("抽出された主な列:", list(df.columns))
+    print(f"✅ {len(df)}レース")
     return df
 
 def update_sheet(df):
@@ -68,7 +46,7 @@ def update_sheet(df):
     try:
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
     except:
-        sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 100)
+        sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 200)
     
     df = df.fillna('')
     df = df.replace([np.inf, -np.inf], '')
