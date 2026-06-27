@@ -6,7 +6,6 @@ import numpy as np
 from datetime import datetime
 
 SHEET_NAME = "ボートレース予想"
-WORKSHEET_NAME = "今日の直前データ"
 
 print("=== 開始 ===", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -19,56 +18,35 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(creds)
 
-def fetch_data():
-    print("📡 データ取得...")
+def fetch_and_update():
+    client = get_gspread_client()
+    spreadsheet = client.open(SHEET_NAME)
+    
     today = datetime.now().strftime("%Y/%m/%d")
     
-    # CSV
-    csv_url = f"https://boatracecsv.github.io/data/previews/original_exhibition/{today}.csv"
-    csv_df = pd.DataFrame()
+    # 1. CSV（まわり足・一周・直線）
     try:
-        csv_df = pd.read_csv(csv_url)
-        print("✅ CSV取得成功", len(csv_df), "列:", list(csv_df.columns)[:10])
+        csv_url = f"https://boatracecsv.github.io/data/previews/original_exhibition/{today}.csv"
+        df_csv = pd.read_csv(csv_url)
+        sheet_csv = spreadsheet.worksheet("CSV_まわり足など") if "CSV_まわり足など" in [ws.title for ws in spreadsheet.worksheets()] else spreadsheet.add_worksheet("CSV_まわり足など", 1000, 300)
+        df_csv = df_csv.fillna('')
+        sheet_csv.clear()
+        sheet_csv.update([df_csv.columns.values.tolist()] + df_csv.values.tolist())
+        print("✅ CSVタブ更新完了")
     except Exception as e:
         print("CSV取得失敗", str(e))
     
-    # API
-    api_df = pd.DataFrame()
+    # 2. API（展示・ST）
     try:
         p = requests.get("https://boatraceopenapi.github.io/previews/v3/today.json", timeout=10).json()
-        api_df = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
-        print("✅ API取得成功", len(api_df))
+        df_api = pd.json_normalize(p.get('previews', p) if isinstance(p, dict) else p, sep='_')
+        sheet_api = spreadsheet.worksheet("API_展示ST") if "API_展示ST" in [ws.title for ws in spreadsheet.worksheets()] else spreadsheet.add_worksheet("API_展示ST", 1000, 300)
+        df_api = df_api.fillna('')
+        sheet_api.clear()
+        sheet_api.update([df_api.columns.values.tolist()] + df_api.values.tolist())
+        print("✅ APIタブ更新完了")
     except Exception as e:
         print("API取得失敗", str(e))
-    
-    # 統合（キー名を柔軟に）
-    if not csv_df.empty and not api_df.empty:
-        merge_key = 'stadium_number' if 'stadium_number' in csv_df.columns and 'stadium_number' in api_df.columns else 'number'
-        df = pd.merge(csv_df, api_df, on=merge_key, how='left', suffixes=('_csv', '_api'))
-    elif not csv_df.empty:
-        df = csv_df
-    else:
-        df = api_df
-    
-    print("最終列:", list(df.columns))
-    print(f"✅ 統合 {len(df)}レース")
-    return df
 
-def update_sheet(df):
-    client = get_gspread_client()
-    spreadsheet = client.open(SHEET_NAME)
-    try:
-        sheet = spreadsheet.worksheet(WORKSHEET_NAME)
-    except:
-        sheet = spreadsheet.add_worksheet(WORKSHEET_NAME, 1000, 300)
-    
-    df = df.fillna('')
-    df = df.replace([np.inf, -np.inf], '')
-    
-    sheet.clear()
-    sheet.update([df.columns.values.tolist()] + df.values.tolist())
-    print(f"🎉 更新完了！ {len(df)}レース")
-
-df = fetch_data()
-update_sheet(df)
+fetch_and_update()
 print("=== 完了 ===")
