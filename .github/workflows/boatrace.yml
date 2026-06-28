@@ -1,7 +1,7 @@
 name: ボートレース自動更新
 on:
   schedule:
-    - cron: '*/10 0-15 * * *'  # JSTレース時間帯に10分間隔（調整）
+    - cron: '*/5 0-15 * * *'  # JSTレース時間帯に5分間隔（調整）
   workflow_dispatch:  # 手動実行も可能
 
 jobs:
