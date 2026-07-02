@@ -87,7 +87,7 @@ def fetch_and_update(target_date=None):
 # ====================== 実行例 ======================
 
 if __name__ == "__main__":
-    # コマンドライン引数で日付指定（例: python script.py 2026-07-01）
+    # コマンドライン引数で日付指定（例: python script.py 2026-07-02）
     if len(sys.argv) > 1:
         target = sys.argv[1]
     else:
